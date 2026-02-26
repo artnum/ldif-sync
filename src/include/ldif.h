@@ -22,7 +22,7 @@ typedef struct {
 } ldif_kv_t;
 
 typedef struct {
-  ldif_kv_t **attributes;
+  ldif_kv_t *attributes;
   size_t length;
   size_t capacity;
 } ldif_entry_t;

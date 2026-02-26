@@ -25,20 +25,20 @@ int main(int argc, char **argv) {
     ldif_entry_t *e = file.entries[i];
     printf("--- ENTRY---\n");
     for (size_t j = 0; j < e->length; j++) {
-      printf("ATTR [%lx] [%s] SUBTYPE [", e->attributes[j]->hash,
-             e->attributes[j]->name);
-      if (e->attributes[j]->subtype.length > 0) {
-        for (size_t i = 0; i < e->attributes[j]->subtype.length; i++) {
+      printf("ATTR [%lx] [%s] SUBTYPE [", e->attributes[j].hash,
+             e->attributes[j].name);
+      if (e->attributes[j].subtype.length > 0) {
+        for (size_t i = 0; i < e->attributes[j].subtype.length; i++) {
           if (i > 0) {
 
             printf(",");
           }
-          printf("%.*s", (int)e->attributes[j]->subtype.len_subtype[i],
-                 e->attributes[j]->subtype.content[i]);
+          printf("%.*s", (int)e->attributes[j].subtype.len_subtype[i],
+                 e->attributes[j].subtype.content[i]);
         }
       }
-      printf("] VALUE(%s) [%s]\n", e->attributes[j]->binary ? "b" : "t",
-             e->attributes[j]->value);
+      printf("] VALUE(%s) [%s]\n", e->attributes[j].binary ? "b" : "t",
+             e->attributes[j].value);
     }
   }
 

@@ -131,21 +131,17 @@ static inline ldif_kv_t *add_attribute(ldif_t *ldif) {
   if (entry->length + 1 >= entry->capacity) {
     void *tmp =
         realloc(entry->attributes,
-                sizeof(ldif_kv_t *) * (entry->capacity + LDIF_ATTRIBUTE_GROW));
+                sizeof(ldif_kv_t) * (entry->capacity + LDIF_ATTRIBUTE_GROW));
     if (!tmp) {
       return NULL;
     }
-
+    memset((uint8_t *)tmp + (entry->capacity * sizeof(ldif_kv_t)), 0,
+           LDIF_ATTRIBUTE_GROW * sizeof(ldif_kv_t));
     entry->attributes = tmp;
     entry->capacity += LDIF_ATTRIBUTE_GROW;
   }
-  ldif_kv_t *kv = calloc(1, sizeof(ldif_kv_t));
-  if (!kv) {
-    return NULL;
-  }
 
-  entry->attributes[entry->length++] = kv;
-  ldif->state.current_attribute = kv;
+  ldif->state.current_attribute = &entry->attributes[entry->length++];
   return ldif->state.current_attribute;
 }
 
@@ -422,7 +418,7 @@ void ldif_parse_file(ldif_t *ldif) {
 
 static inline void ldif_free_entry(ldif_entry_t *entry) {
   for (size_t i = 0; i < entry->length; i++) {
-    ldif_kv_t *attr = entry->attributes[i];
+    ldif_kv_t *attr = &entry->attributes[i];
     if (attr) {
       if (attr->name) {
         free(attr->name);
@@ -436,7 +432,6 @@ static inline void ldif_free_entry(ldif_entry_t *entry) {
         }
         free(attr->subtype.content);
       }
-      free(attr);
     }
   }
 
