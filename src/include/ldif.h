@@ -28,7 +28,7 @@ typedef struct {
 } ldif_entry_t;
 
 typedef struct {
-  ldif_entry_t **entries;
+  ldif_entry_t *entries;
   size_t length;
   size_t capacity;
   struct {

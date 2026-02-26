@@ -151,21 +151,18 @@ static inline ldif_entry_t *add_entry(ldif_t *ldif) {
   hash_current_attribute(ldif);
 
   if (ldif->length + 1 >= ldif->capacity) {
-    void *tmp = realloc(ldif->entries, sizeof(ldif_entry_t *) *
+    void *tmp = realloc(ldif->entries, sizeof(ldif_entry_t) *
                                            (ldif->capacity + LDIF_ENTRY_GROW));
     if (!tmp) {
       return NULL;
     }
+    memset((uint8_t *)tmp + (ldif->capacity * sizeof(ldif_entry_t)), 0,
+           LDIF_ENTRY_GROW * sizeof(ldif_entry_t));
     ldif->entries = tmp;
     ldif->capacity += LDIF_ENTRY_GROW;
   }
-  ldif_entry_t *entry = calloc(1, sizeof(ldif_entry_t));
-  if (!entry) {
-    return NULL;
-  }
-  ldif->entries[ldif->length++] = entry;
 
-  ldif->state.current_entry = entry;
+  ldif->state.current_entry = &ldif->entries[ldif->length++];
   ldif->state.current_attribute = NULL;
   return ldif->state.current_entry;
 }
@@ -436,7 +433,6 @@ static inline void ldif_free_entry(ldif_entry_t *entry) {
   }
 
   free(entry->attributes);
-  free(entry);
 }
 
 void ldif_destroy(ldif_t *ldif) {
@@ -449,9 +445,7 @@ void ldif_destroy(ldif_t *ldif) {
 
   XXH3_freeState(ldif->state.current_hash_state);
   for (size_t i = 0; i < ldif->length; i++) {
-    if (ldif->entries[i]) {
-      ldif_free_entry(ldif->entries[i]);
-    }
+    ldif_free_entry(&ldif->entries[i]);
   }
   free(ldif->entries);
 }
