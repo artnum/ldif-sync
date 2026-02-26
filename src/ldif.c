@@ -176,9 +176,10 @@ static inline bool push_char(ldif_t *ldif, char c) {
       sort_attributes((ldif)->state.current_entry);                            \
       XXH3_64bits_reset((ldif)->state.current_hash_state);                     \
       for (size_t i = 0; i < (ldif)->state.current_entry->length; i++) {       \
-        XXH3_64bits_update((ldif)->state.current_hash_state,                   \
-                           (void *)&(ldif)->entries->attributes[i].hash,       \
-                           sizeof(uint64_t));                                  \
+        XXH3_64bits_update(                                                    \
+            (ldif)->state.current_hash_state,                                  \
+            (void *)&(ldif)->state.current_entry->attributes[i].hash,          \
+            sizeof(uint64_t));                                                 \
       }                                                                        \
                                                                                \
       (ldif)->state.current_entry->hash =                                      \
