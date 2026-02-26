@@ -23,10 +23,10 @@ static inline void _swap_subtype(ldif_kv_t *kv, size_t s1, size_t s2) {
 static inline int _cmp_subtype(ldif_kv_t *kv, size_t s1, size_t s2) {
   if (kv->subtype.len_subtype[s1] == kv->subtype.len_subtype[s2]) {
     return strncasecmp(kv->subtype.content[s1], kv->subtype.content[s2],
-                       kv->subtype.len_subtype[s1]);
+                       kv->subtype.len_subtype[s1]) > 0;
   }
   if (kv->subtype.len_subtype[s1] < kv->subtype.len_subtype[s2]) {
-    return -1;
+    return 0;
   }
   return 1;
 }
@@ -61,6 +61,48 @@ void sort_subtypes(ldif_kv_t *kv) {
   for (size_t i = kv->subtype.length - 1; i > 0; i--) {
     _swap_subtype(kv, 0, i);
     _heapify_subtype(kv, 0, i);
+  }
+}
+
+static inline void _heapify_attributes(ldif_entry_t *entry, size_t rootnode,
+                                       size_t length) {
+  size_t largest;
+  size_t left;
+  size_t right;
+
+__heapify:
+  largest = rootnode;
+  left = 2 * rootnode + 1;
+  right = 2 * rootnode + 2;
+
+  if (left < length &&
+      entry->attributes[left].hash > entry->attributes[largest].hash)
+    largest = left;
+  if (right < length &&
+      entry->attributes[right].hash > entry->attributes[largest].hash)
+    largest = right;
+
+  if (largest != rootnode) {
+    ldif_kv_t e = {0};
+    memcpy(&e, &entry->attributes[rootnode], sizeof(ldif_kv_t));
+    mempcpy(&entry->attributes[rootnode], &entry->attributes[largest],
+            sizeof(ldif_kv_t));
+    mempcpy(&entry->attributes[largest], &e, sizeof(ldif_kv_t));
+    rootnode = largest;
+    goto __heapify;
+  }
+}
+
+void sort_attributes(ldif_entry_t *entry) {
+  for (size_t i = entry->length / 2 - 1; i + 1 != 0; i--) {
+    _heapify_attributes(entry, i, entry->length);
+  }
+  for (size_t i = entry->length - 1; i > 0; i--) {
+    ldif_kv_t e = {0};
+    memcpy(&e, &entry->attributes[0], sizeof(ldif_kv_t));
+    mempcpy(&entry->attributes[0], &entry->attributes[i], sizeof(ldif_kv_t));
+    mempcpy(&entry->attributes[i], &e, sizeof(ldif_kv_t));
+    _heapify_attributes(entry, 0, i);
   }
 }
 
@@ -124,6 +166,22 @@ static inline bool push_char(ldif_t *ldif, char c) {
                          (ldif)->state.current_attribute->value,               \
                          (ldif)->state.current_attribute->len_value);          \
       (ldif)->state.current_attribute->hash =                                  \
+          XXH3_64bits_digest((ldif)->state.current_hash_state);                \
+    }                                                                          \
+  } while (0)
+
+#define hash_current_entry(ldif)                                               \
+  do {                                                                         \
+    if ((ldif)->state.current_entry) {                                         \
+      sort_attributes((ldif)->state.current_entry);                            \
+      XXH3_64bits_reset((ldif)->state.current_hash_state);                     \
+      for (size_t i = 0; i < (ldif)->state.current_entry->length; i++) {       \
+        XXH3_64bits_update((ldif)->state.current_hash_state,                   \
+                           (void *)&(ldif)->entries->attributes[i].hash,       \
+                           sizeof(uint64_t));                                  \
+      }                                                                        \
+                                                                               \
+      (ldif)->state.current_entry->hash =                                      \
           XXH3_64bits_digest((ldif)->state.current_hash_state);                \
     }                                                                          \
   } while (0)
@@ -206,6 +264,7 @@ static inline ldif_entry_t *add_entry(ldif_t *ldif) {
 
   normalize_current_attribute(ldif);
   hash_current_attribute(ldif);
+  hash_current_entry(ldif);
 
   if (ldif->length + 1 >= ldif->capacity) {
     void *tmp = realloc(ldif->entries, sizeof(ldif_entry_t) *

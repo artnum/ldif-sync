@@ -23,7 +23,7 @@ int main(int argc, char **argv) {
 
   for (size_t i = 0; i < file.length; i++) {
     ldif_entry_t *e = &file.entries[i];
-    printf("--- ENTRY---\n");
+    printf("--- ENTRY %lx---\n", e->hash);
     for (size_t j = 0; j < e->length; j++) {
       printf("ATTR [%lx] [%s] SUBTYPE [", e->attributes[j].hash,
              e->attributes[j].name);

@@ -25,6 +25,7 @@ typedef struct {
   ldif_kv_t *attributes;
   size_t length;
   size_t capacity;
+  uint64_t hash;
 } ldif_entry_t;
 
 typedef struct {
