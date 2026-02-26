@@ -11,6 +11,59 @@
 #define LDIF_ATTRIBUTE_GROW 20
 #define LDIF_BUFFER_GROW 128
 
+static inline void _swap_subtype(ldif_kv_t *kv, size_t s1, size_t s2) {
+  size_t l = kv->subtype.len_subtype[s1];
+  void *v = kv->subtype.content[s1];
+  kv->subtype.len_subtype[s1] = kv->subtype.len_subtype[s2];
+  kv->subtype.content[s1] = kv->subtype.content[s2];
+  kv->subtype.len_subtype[s2] = l;
+  kv->subtype.content[s2] = v;
+}
+
+static inline int _cmp_subtype(ldif_kv_t *kv, size_t s1, size_t s2) {
+  if (kv->subtype.len_subtype[s1] == kv->subtype.len_subtype[s2]) {
+    return strncasecmp(kv->subtype.content[s1], kv->subtype.content[s2],
+                       kv->subtype.len_subtype[s1]);
+  }
+  if (kv->subtype.len_subtype[s1] < kv->subtype.len_subtype[s2]) {
+    return -1;
+  }
+  return 1;
+}
+
+static inline void _heapify_subtype(ldif_kv_t *kv, size_t rootnode,
+                                    size_t length) {
+  size_t largest;
+  size_t left;
+  size_t right;
+
+__heapify:
+  largest = rootnode;
+  left = 2 * rootnode + 1;
+  right = 2 * rootnode + 2;
+
+  if (left < length && _cmp_subtype(kv, left, largest))
+    largest = left;
+  if (right < length && _cmp_subtype(kv, right, largest))
+    largest = right;
+
+  if (largest != rootnode) {
+    _swap_subtype(kv, rootnode, largest);
+    rootnode = largest;
+    goto __heapify;
+  }
+}
+
+void sort_subtypes(ldif_kv_t *kv) {
+  for (size_t i = kv->subtype.length / 2 - 1; i + 1 != 0; i--) {
+    _heapify_subtype(kv, i, kv->subtype.length);
+  }
+  for (size_t i = kv->subtype.length - 1; i > 0; i--) {
+    _swap_subtype(kv, 0, i);
+    _heapify_subtype(kv, 0, i);
+  }
+}
+
 static inline bool push_char(ldif_t *ldif, char c) {
   assert(ldif != NULL);
   if (ldif->state.buffer.length + 1 >= ldif->state.buffer.capacity) {
@@ -44,6 +97,9 @@ static inline bool push_char(ldif_t *ldif, char c) {
           (ldif)->state.current_attribute->len_name > 0) {                     \
         lower_case_string((ldif)->state.current_attribute->name,               \
                           (ldif)->state.current_attribute->len_name);          \
+      }                                                                        \
+      if ((ldif)->state.current_attribute->subtype.length > 1) {               \
+        sort_subtypes(ldif->state.current_attribute);                          \
       }                                                                        \
     }                                                                          \
   } while (0)
@@ -148,6 +204,7 @@ static inline ldif_kv_t *add_attribute(ldif_t *ldif) {
 static inline ldif_entry_t *add_entry(ldif_t *ldif) {
   assert(ldif != NULL);
 
+  normalize_current_attribute(ldif);
   hash_current_attribute(ldif);
 
   if (ldif->length + 1 >= ldif->capacity) {
