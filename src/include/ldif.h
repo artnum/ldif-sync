@@ -32,6 +32,12 @@ typedef struct {
   ldif_entry_t *entries;
   size_t length;
   size_t capacity;
+  void *next;
+} ldif_entry_chunk_t;
+
+typedef struct {
+  ldif_entry_chunk_t *first;
+  ldif_entry_chunk_t *last;
   struct {
     ldif_entry_t *current_entry;
     ldif_kv_t *current_attribute;
@@ -42,6 +48,7 @@ typedef struct {
       size_t capacity;
     } buffer;
     int fd;
+    size_t max_chunk_count;
 
     unsigned short attr_name : 1;
     unsigned short attr_value : 1;

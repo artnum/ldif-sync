@@ -205,15 +205,23 @@ static bool add_subtype(ldif_kv_t *attribute, const char *value,
   if (attribute->subtype.length + 1 >= attribute->subtype.capacity) {
     void *tmp = realloc(attribute->subtype.content,
                         (LDIF_SUBTYPE_GROW + attribute->subtype.capacity) *
-                            (sizeof(size_t) + sizeof(char *)));
+                            sizeof(char *));
     if (!tmp) {
       return false;
     }
     attribute->subtype.content = tmp;
-    attribute->subtype.len_subtype =
-        (size_t *)((char *)tmp +
-                   (sizeof(char *) *
-                    (LDIF_SUBTYPE_GROW + attribute->subtype.capacity)));
+
+    tmp = realloc(attribute->subtype.len_subtype,
+                  (LDIF_SUBTYPE_GROW + attribute->subtype.capacity) *
+                      sizeof(size_t));
+    if (!tmp) {
+      return false;
+    }
+    attribute->subtype.len_subtype = tmp;
+    memset(attribute->subtype.content + attribute->subtype.capacity, 0,
+           sizeof(char *) * LDIF_SUBTYPE_GROW);
+    memset(attribute->subtype.len_subtype + attribute->subtype.capacity, 0,
+           sizeof(size_t) * LDIF_SUBTYPE_GROW);
     attribute->subtype.capacity += LDIF_SUBTYPE_GROW;
   }
 
@@ -267,19 +275,34 @@ static inline ldif_entry_t *add_entry(ldif_t *ldif) {
   hash_current_attribute(ldif);
   hash_current_entry(ldif);
 
-  if (ldif->length + 1 >= ldif->capacity) {
-    void *tmp = realloc(ldif->entries, sizeof(ldif_entry_t) *
-                                           (ldif->capacity + LDIF_ENTRY_GROW));
+  if (!ldif->last || ldif->last->length >= ldif->state.max_chunk_count) {
+    ldif_entry_chunk_t *new_chunk = calloc(1, sizeof(ldif_entry_chunk_t));
+    if (!new_chunk) {
+      return NULL;
+    }
+    if (!ldif->first) {
+      ldif->first = new_chunk;
+    }
+    if (ldif->last) {
+      ldif->last->next = new_chunk;
+    }
+    ldif->last = new_chunk;
+  }
+
+  if (ldif->last->length + 1 >= ldif->last->capacity) {
+    void *tmp = realloc(ldif->last->entries,
+                        sizeof(ldif_entry_t) *
+                            (ldif->last->capacity + LDIF_ENTRY_GROW));
     if (!tmp) {
       return NULL;
     }
-    memset((uint8_t *)tmp + (ldif->capacity * sizeof(ldif_entry_t)), 0,
+    memset((uint8_t *)tmp + (ldif->last->capacity * sizeof(ldif_entry_t)), 0,
            LDIF_ENTRY_GROW * sizeof(ldif_entry_t));
-    ldif->entries = tmp;
-    ldif->capacity += LDIF_ENTRY_GROW;
+    ldif->last->entries = tmp;
+    ldif->last->capacity += LDIF_ENTRY_GROW;
   }
 
-  ldif->state.current_entry = &ldif->entries[ldif->length++];
+  ldif->state.current_entry = &ldif->last->entries[ldif->last->length++];
   ldif->state.current_attribute = NULL;
   return ldif->state.current_entry;
 }
@@ -545,10 +568,10 @@ static inline void ldif_free_entry(ldif_entry_t *entry) {
           free(attr->subtype.content[j]);
         }
         free(attr->subtype.content);
+        free(attr->subtype.len_subtype);
       }
     }
   }
-
   free(entry->attributes);
 }
 
@@ -561,8 +584,13 @@ void ldif_destroy(ldif_t *ldif) {
   }
 
   XXH3_freeState(ldif->state.current_hash_state);
-  for (size_t i = 0; i < ldif->length; i++) {
-    ldif_free_entry(&ldif->entries[i]);
+  for (ldif_entry_chunk_t *c = ldif->first; c;) {
+    ldif_entry_chunk_t *n = c->next;
+    for (size_t i = 0; i < c->length; i++) {
+      ldif_free_entry(&c->entries[i]);
+    }
+    free(c->entries);
+    free(c);
+    c = n;
   }
-  free(ldif->entries);
 }
