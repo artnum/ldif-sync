@@ -354,6 +354,7 @@ static inline char *buffer_dup(ldif_t *ldif, size_t *len) {
   if (tmp) {
     memcpy(tmp, p, l);
   }
+  *(tmp + l) = '\0';
   if (len) {
     *len = l;
   }
@@ -372,7 +373,7 @@ static inline char *buffer_cat_value(ldif_t *ldif, char *dest, size_t *len) {
   if (*p == '\0') {
     return false;
   }
-  size_t value_len = strlen(dest);
+  size_t value_len = *len;
   if (value_len == 0) {
     return NULL;
   }
@@ -382,13 +383,11 @@ static inline char *buffer_cat_value(ldif_t *ldif, char *dest, size_t *len) {
   }
   memcpy(tmp + value_len, p, l);
   *(tmp + l + value_len) = '\0';
-  if (len) {
-    *len = l + value_len;
-  }
+  *len = l + value_len;
   return tmp;
 }
 
-void ldif_parse_file(ldif_t *ldif) {
+bool ldif_parse_file(ldif_t *ldif) {
   char buffer[BUFFER_SIZE];
   size_t line_count = 1;
   ldif->state.line_start = 1;
@@ -419,7 +418,7 @@ void ldif_parse_file(ldif_t *ldif) {
           if (!add_entry(ldif)) {
             /* TODO : handle error */
             fprintf(stderr, "Memory allocation of entry %ld\n", line_count);
-            return;
+            return false;
           }
           break;
         }
@@ -428,7 +427,7 @@ void ldif_parse_file(ldif_t *ldif) {
             if (!add_entry(ldif)) {
               /* TODO : handle error */
               fprintf(stderr, "Memory allocation of entry %ld\n", line_count);
-              return;
+              return false;
             }
           }
           if (ldif->state.continuation) {
@@ -475,7 +474,6 @@ void ldif_parse_file(ldif_t *ldif) {
               buffer_dup(ldif, &ldif->state.current_attribute->len_name);
           buffer_clean(ldif);
         } else {
-
           push_char(ldif, buffer[i]);
         }
       } break;
@@ -484,7 +482,7 @@ void ldif_parse_file(ldif_t *ldif) {
         if (ldif->state.line_start) {
           /* TODO : handle error */
           fprintf(stderr, "Separator at line start %ld\n", line_count);
-          return;
+          return false;
         }
         if (ldif->state.prev_was_sep) {
           ldif->state.current_attribute->binary = true;
@@ -502,14 +500,14 @@ void ldif_parse_file(ldif_t *ldif) {
             if (!add_entry(ldif)) {
               /* TODO : handle error */
               fprintf(stderr, "Memory allocation of entry %ld\n", line_count);
-              return;
+              return false;
             }
           }
           if (!ldif->state.current_attribute) {
             if (!add_attribute(ldif)) {
               /* TODO : handle error */
               fprintf(stderr, "Memory allocation of attribute\n");
-              return;
+              return false;
             }
           }
           if (ldif->state.attr_subtype) {
@@ -535,14 +533,14 @@ void ldif_parse_file(ldif_t *ldif) {
             if (!add_entry(ldif)) {
               /* TODO : handle error */
               fprintf(stderr, "Memory allocation of entry %ld\n", line_count);
-              return;
+              return false;
             }
           }
 
           if (!add_attribute(ldif)) {
             /* TODO : handle error */
             fprintf(stderr, "Memory allocation of attribute %ld\n", line_count);
-            return;
+            return false;
           }
         }
         push_char(ldif, buffer[i]);
@@ -551,6 +549,7 @@ void ldif_parse_file(ldif_t *ldif) {
       } /* switch */
     } /* while */
   }
+  return true;
 }
 
 static inline void ldif_free_entry(ldif_entry_t *entry) {
@@ -573,6 +572,43 @@ static inline void ldif_free_entry(ldif_entry_t *entry) {
     }
   }
   free(entry->attributes);
+}
+
+const char *ldif_first_attr(ldif_entry_t *entry, const char *name,
+                            ldif_iter_t *iter) {
+  assert(entry != NULL);
+  assert(iter != NULL);
+
+  iter->current = 0;
+  iter->e = entry;
+  iter->name_len = strlen(name);
+  for (size_t i = 0; i < iter->e->length; i++) {
+    if (iter->name_len != iter->e->attributes[i].len_name) {
+      continue;
+    }
+    if (strncmp(name, iter->e->attributes[i].name, iter->name_len) == 0) {
+      iter->name = iter->e->attributes[i].name;
+      iter->current = i;
+      return iter->e->attributes[i].value;
+    }
+  }
+  return NULL;
+}
+
+const char *ldif_next_attr(ldif_iter_t *iter) {
+  assert(iter != NULL);
+  assert(iter->e != NULL);
+  assert(iter->name != NULL);
+  for (size_t i = iter->current + 1; i < iter->e->length; i++) {
+    if (iter->name_len != iter->e->attributes[i].len_name) {
+      continue;
+    }
+    if (strncmp(iter->name, iter->e->attributes[i].name, iter->name_len) == 0) {
+      iter->current = i;
+      return iter->e->attributes[i].value;
+    }
+  }
+  return NULL;
 }
 
 void ldif_destroy(ldif_t *ldif) {

@@ -1,7 +1,7 @@
 DEBUG ?= 1
 
 NAME=ldif-sync
-PKG_PACKAGES=libxxhash
+PKG_PACKAGES=libxxhash notcurses ldap
 
 ifeq ($(strip $(NAME)),)
 	$(error NAME is empty)
@@ -20,11 +20,13 @@ else
 	LIBS :=$(PKG_LIBS)
 endif
 
-SRCFILES=$(wildcard src/*.c)
+SRCFILES=$(wildcard src/*.c) tomlc17/src/tomlc17.c
 OBJFILES=$(addprefix build/, $(addsuffix .o,$(basename $(notdir $(SRCFILES)))))
 RM=rm
 CC=gcc
 
+
+vpath %.c src/ tomlc17/src/
 
 all: $(NAME)
 
@@ -32,7 +34,7 @@ $(NAME): $(OBJFILES)
 	$(CC) $^ -o $(NAME) $(LIBS)
 
 
-build/%.o: src/%.c | build
+build/%.o: %.c | build
 	$(CC) $(CFLAGS) -c $< -o $@ $(LIBS)
 
 build:

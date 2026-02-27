@@ -60,7 +60,16 @@ typedef struct {
   } state;
 } ldif_t;
 
-void ldif_parse_file(ldif_t *ldif);
+typedef struct {
+  ldif_entry_t *e;
+  char *name;
+  size_t name_len;
+  size_t current;
+} ldif_iter_t;
+
+bool ldif_parse_file(ldif_t *ldif);
 void ldif_destroy(ldif_t *ldif);
 
+const char *ldif_first_attr(ldif_entry_t *entry, const char *name, ldif_iter_t *iter); 
+const char *ldif_next_attr(ldif_iter_t *iter); 
 #endif /* LDIF_H__ */
