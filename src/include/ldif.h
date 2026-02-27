@@ -38,6 +38,8 @@ typedef struct {
 typedef struct {
   ldif_entry_chunk_t *first;
   ldif_entry_chunk_t *last;
+  size_t item_count;
+
   struct {
     ldif_entry_t *current_entry;
     ldif_kv_t *current_attribute;

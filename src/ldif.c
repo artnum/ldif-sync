@@ -10,6 +10,60 @@
 #define LDIF_SUBTYPE_GROW 4
 #define LDIF_ATTRIBUTE_GROW 20
 #define LDIF_BUFFER_GROW 128
+/* Based on https://blog.leonardotamiano.xyz/tech/base64/ */
+static const int UNBASE64[256] = {
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, 62, -1, -1, -1, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60,
+    61, -1, -1, -1, 0,  -1, -1, -1, 0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10,
+    11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, -1, -1, -1, -1,
+    -1, -1, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42,
+    43, 44, 45, 46, 47, 48, 49, 50, 51, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
+    -1, -1, -1, -1, -1, -1, -1, -1, -1};
+
+size_t base64_decode_inplace(char *in, size_t in_len) {
+  size_t in_index = 0;
+  size_t out_index = 0;
+  char first, second, third, fourth;
+
+  if (in_len % 4 != 0) {
+    return 0;
+  }
+
+  while (in_index < in_len - 1) {
+    for (int i = 0; i < 4; i++) {
+      if (UNBASE64[(int)in[in_index + i]] == -1) {
+        return 0;
+      }
+    }
+
+    first = UNBASE64[(int)in[in_index]];
+    second = UNBASE64[(int)in[in_index + 1]];
+    third = UNBASE64[(int)in[in_index + 2]];
+    fourth = UNBASE64[(int)in[in_index + 3]];
+
+    in[out_index++] = (first << 2) | ((second & 0x30) >> 4);
+
+    if (in[in_index + 2] != '=') {
+      in[out_index++] = ((second & 0xF) << 4) | ((third & 0x3C) >> 2);
+    }
+
+    if (in[in_index + 3] != '=') {
+      in[out_index++] = ((third & 0x3) << 6) | fourth;
+    }
+
+    in_index += 4;
+  }
+
+  in[out_index] = '\0';
+  return out_index + 1;
+}
 
 static inline void _swap_subtype(ldif_kv_t *kv, size_t s1, size_t s2) {
   size_t l = kv->subtype.len_subtype[s1];
@@ -142,6 +196,18 @@ static inline bool push_char(ldif_t *ldif, char c) {
       }                                                                        \
       if ((ldif)->state.current_attribute->subtype.length > 1) {               \
         sort_subtypes(ldif->state.current_attribute);                          \
+      }                                                                        \
+      if ((ldif)->state.current_attribute->binary) {                           \
+        (ldif)->state.current_attribute->len_value =                           \
+            base64_decode_inplace((ldif)->state.current_attribute->value,      \
+                                  (ldif)->state.current_attribute->len_value); \
+      }                                                                        \
+      /* binary DN is utf8 encoded dn into base64 */                           \
+      if ((ldif)->state.current_attribute->binary &&                           \
+          (ldif)->state.current_attribute->len_name == 2 &&                    \
+          strncmp("dn", (ldif)->state.current_attribute->name,                 \
+                  (ldif)->state.current_attribute->len_name) == 0) {           \
+        (ldif)->state.current_attribute->binary = false;                       \
       }                                                                        \
     }                                                                          \
   } while (0)
@@ -302,6 +368,7 @@ static inline ldif_entry_t *add_entry(ldif_t *ldif) {
     ldif->last->capacity += LDIF_ENTRY_GROW;
   }
 
+  ldif->item_count++;
   ldif->state.current_entry = &ldif->last->entries[ldif->last->length++];
   ldif->state.current_attribute = NULL;
   return ldif->state.current_entry;

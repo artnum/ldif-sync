@@ -94,11 +94,17 @@ void render_ldif_entry(struct ncplane *plan, int cursor, ldif_entry_t *entry,
   }
 }
 
-bool sync_ldap_server(LDAP *ld, ldif_t *file, struct ncplane *log_plane) {
+bool sync_ldap_server(LDAP *ld, ldif_t *file, struct ncplane *log_plane,
+                      struct ncplane *title_plane) {
   int y = 0;
+  size_t item_count = 0;
   for (ldif_entry_chunk_t *c = file->first; c; c = c->next) {
     for (size_t i = 0; i < c->length; i++) {
       ldif_entry_t *e = &c->entries[i];
+      ncplane_erase(title_plane);
+      ncplane_printf(title_plane, "Process %ld / %ld", ++item_count,
+                     file->item_count);
+      notcurses_render(ncplane_notcurses(title_plane));
       if (!e) {
         continue;
       }
@@ -111,7 +117,10 @@ bool sync_ldap_server(LDAP *ld, ldif_t *file, struct ncplane *log_plane) {
         if ((err = ldap_search_ext_s(ld, dn, LDAP_SCOPE_BASE, "(objectclass=*)",
                                      attrs, 0, NULL, NULL, NULL, 0, &msg)) !=
             LDAP_SUCCESS) {
-          ncplane_printf_yx(log_plane, y++, 0, "LDAP ERROR [%s] %s\n", dn,
+          if (y < ncplane_dim_y(log_plane)) {
+            y++;
+          }
+          ncplane_printf_yx(log_plane, y, 0, "LDAP ERROR [%s] %s\n", dn,
                             ldap_err2string(err));
           ldap_msgfree(msg);
           continue;
@@ -124,10 +133,11 @@ bool sync_ldap_server(LDAP *ld, ldif_t *file, struct ncplane *log_plane) {
 }
 
 bool setup_ui(struct notcurses *nc, struct ncplane **main_plane,
-              struct ncplane **log_plane) {
+              struct ncplane **log_plane, struct ncplane **title_plane) {
   assert(nc != NULL);
   assert(main_plane != NULL);
   assert(log_plane != NULL);
+  assert(title_plane != NULL);
   const int width = ncplane_dim_x(notcurses_stdplane(nc));
   const int height = ncplane_dim_y(notcurses_stdplane(nc));
 
@@ -146,6 +156,14 @@ bool setup_ui(struct notcurses *nc, struct ncplane **main_plane,
   if (!*log_plane) {
     return false;
   }
+  ncplane_set_scrolling(*log_plane, 100);
+  const ncplane_options title_plan_options = {
+      .cols = width, .rows = 1, .x = 0, .y = 0};
+  *title_plane = ncplane_create(notcurses_stdplane(nc), &title_plan_options);
+  if (!*title_plane) {
+    return false;
+  }
+
   return true;
 }
 
@@ -212,7 +230,9 @@ int main(int argc, char **argv) {
 
   struct ncplane *main_plane = NULL;
   struct ncplane *log_plane = NULL;
-  if (!setup_ui(nc, &main_plane, &log_plane)) {
+  struct ncplane *title_plane = NULL;
+  if (!setup_ui(nc, &main_plane, &log_plane, &title_plane)) {
+
     fprintf(stderr, "Cannot create plane");
     ldap_unbind_ext_s(ld, NULL, NULL);
     ldif_destroy(&file);
@@ -271,7 +291,7 @@ int main(int argc, char **argv) {
     }; break;
 
     case NCKEY_F05: {
-      sync_ldap_server(ld, &file, log_plane);
+      sync_ldap_server(ld, &file, log_plane, title_plane);
     } break;
 
     case NCKEY_UP: {
